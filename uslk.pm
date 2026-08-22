@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 ##################################################
-# Copyright (c) 2026 Syed Shakir Iqbal
+# Copyright (c) 2026 Syed Shakir Iqbal (Xwhiteroom)
 # SPDX-License-Identifier: MIT
 ##################################################
 #use strict;
