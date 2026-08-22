@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-# Copyright (c) 2026 Syed Shakir Iqbal
+# Copyright (c) 2026 Syed Shakir Iqbal (Xwhiteroom)
 # SPDX-License-Identifier: MIT
 
 
