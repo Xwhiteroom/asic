@@ -36,7 +36,7 @@ elif args.terminal == "xterm":
     term_cmd = f"xterm -T {title}"
 elif args.terminal == "kitty":
     title = f"XLSF_KT_{args.cores}x{args.ram // 1000}GB"
-    term_cmd = f"kitty --title={title} --allow-remote-control"
+    term_cmd = f"kitty --title={title} -o allow_remote_control=yes"    
 else:
     raise ValueError(f"Unsupported terminal: {args.terminal}")
 
