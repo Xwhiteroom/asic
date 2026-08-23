@@ -2,8 +2,23 @@
 """
 # Copyright (c) 2026 Syed Shakir Iqbal (Xwhiteroom)
 # SPDX-License-Identifier: MIT
-
+#
+# Examples:
+#   xlsf
+#   xlsf --cores 8 --ram 64000
+#   xlsf -- pt_shell -file run.tcl
+#   xlsf --helper top
+#   xlsf --helper "tail -f run.log"
+#   xlsf --helper bin/xcmd
+#   xlsf --terminal xterm
+#   xlsf --dry
+#
+# Notes:
+#   - No cmd => launch terminal.
+#   - Cmd after '--' => run directly.
+#   - Multiple --helper => multiple kitty tabs.
 """
+
 
 import argparse
 import os
@@ -21,12 +36,13 @@ p.add_argument("--select", default="csbatch", help="LSF select constraint")
 p.add_argument("--output", help="Override log file path")
 p.add_argument("--logdir", default="~/trash", help="Log directory")
 p.add_argument("--logprefix", default="xlsf_", help="Log filename prefix")
-p.add_argument("--terminal", default="kitty", help="gnome/xterm/kitty")
-
+p.add_argument("--terminal", default="kitty",choices=["xterm", "kitty"], help="xterm/kitty/gnome(TBD)")
+p.add_argument("--helper",action="append",default=[],help="Launch helper command in an additional kitty tab. Can be specified multiple times.")
 p.add_argument("--dry", action="store_true", help="Print command, do not submit")
 p.add_argument("cmd", nargs=argparse.REMAINDER, help="Command to run")
 
 args = p.parse_args()
+stamp = datetime.now().strftime("%Y%m%d")
 
 if args.terminal == "gnome":
     title = f"XLSF_GT_{args.cores}x{args.ram // 1000}GB"
@@ -36,7 +52,19 @@ elif args.terminal == "xterm":
     term_cmd = f"xterm -T {title}"
 elif args.terminal == "kitty":
     title = f"XLSF_KT_{args.cores}x{args.ram // 1000}GB"
-    term_cmd = f"kitty --title={title} -o allow_remote_control=yes"    
+    #term_cmd = f"kitty --title={title}"
+    term_cmd = f"kitty --title={title} -o allow_remote_control=yes"       
+    if args.helper:
+        session_file = f"/tmp/xlsf_{os.getpid()}.session"
+        session_file = os.path.expanduser(f"{args.logdir}/{args.logprefix}{stamp}.{os.getpid()}.session")
+        with open(session_file, "w") as f:
+            f.write("new_tab Shell\n")
+            f.write(f"launch {os.environ.get('SHELL', '/bin/bash')}\n\n")
+            for helper in args.helper:
+                helper_name = os.path.basename(shlex.split(helper)[0])
+                f.write(f"new_tab {helper_name}\n")
+                f.write(f"launch sh -c {shlex.quote(helper)}\n\n")
+        term_cmd = (f"{term_cmd}" f" --session {session_file}")
 else:
     raise ValueError(f"Unsupported terminal: {args.terminal}")
 
@@ -51,7 +79,7 @@ else:
 logfile = (
     os.path.expanduser(args.output)
     if   args.output
-    else os.path.expanduser(f"{args.logdir}/{args.logprefix}{datetime.now():%Y%m%d}.log")
+    else os.path.expanduser(f"{args.logdir}/{args.logprefix}{stamp}.log")
 )
 
 bsub_cmd = [
@@ -72,3 +100,4 @@ if args.dry:
 else:
     print("<CMD> ", " ".join(shlex.quote(x) for x in bsub_cmd))    
     subprocess.run(bsub_cmd, check=True)
+
