@@ -79,12 +79,30 @@ proc ssi_csv_quote {val} {
 # --- Dump node->level->object_list dict to CSV ---
 proc ssi_dump_tree_dict_csv {tree_data filename} {
       set fh [open $filename w]
-      puts $fh "root,level,object"
-
+      puts $fh "root,level,class,object"
+      
+      array unset  cond
+	set cond(com) "is_sequential==false && lib_cell.is_buffer == false && lib_cell.is_inverter == false"
+	set cond(buf) "is_sequential==false && lib_cell.is_buffer == true"
+	set cond(inv) "is_sequential==false && lib_cell.is_inverter == true"
+	set cond(rep) "is_sequential==false && lib_cell.number_of_pins == 2"      
+	set cond(icg) "is_sequential==true && is_integrated_clock_gating_cell==true"
+	set cond(seq) "is_sequential==true && is_integrated_clock_gating_cell==false"
+      
       dict for {root levels} $tree_data {
           foreach level [lsort -integer [dict keys $levels]] {
               foreach obj [dict get $levels $level] {
-                  puts $fh "[ssi_csv_quote $root],${level},[ssi_csv_quote $obj]"
+                  if { [sizeof_collection [get_ports -quiet [ssi_csv_quote $obj]]] } {
+                    set xclass port_out
+                  } else {
+                    set xcell [get_cells -of_object [get_pins -quiet [ssi_csv_quote $obj]]] 
+                    set xclass PIN                    
+                    foreach cls [array names cond] {
+                        if {[sizeof_collection [filter_collection $xcell $cond($cls)]]} {set xclass $cls ; break}
+                    }
+                  }
+
+                  puts $fh "[ssi_csv_quote $root],${level},$xclass,[ssi_csv_quote $obj]"
               }
           }
       }
