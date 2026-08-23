@@ -20,7 +20,7 @@ p.add_argument("--type", "-t", default="RHEL8_64", help="LSF Resource Machine")
 p.add_argument("--select", default="csbatch", help="LSF select constraint")
 p.add_argument("--output", help="Override log file path")
 p.add_argument("--logdir", default="~/trash", help="Log directory")
-p.add_argument("--logprefix", default="genie_", help="Log filename prefix")
+p.add_argument("--logprefix", default="xlsf_", help="Log filename prefix")
 p.add_argument("--terminal", default="xterm", help="gnome/xterm")
 
 p.add_argument("--dry", action="store_true", help="Print command, do not submit")
