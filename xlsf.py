@@ -21,7 +21,7 @@ p.add_argument("--select", default="csbatch", help="LSF select constraint")
 p.add_argument("--output", help="Override log file path")
 p.add_argument("--logdir", default="~/trash", help="Log directory")
 p.add_argument("--logprefix", default="xlsf_", help="Log filename prefix")
-p.add_argument("--terminal", default="xterm", help="gnome/xterm")
+p.add_argument("--terminal", default="kitty", help="gnome/xterm/kitty")
 
 p.add_argument("--dry", action="store_true", help="Print command, do not submit")
 p.add_argument("cmd", nargs=argparse.REMAINDER, help="Command to run")
@@ -34,6 +34,9 @@ if args.terminal == "gnome":
 elif args.terminal == "xterm":
     title = f"XLSF_XT_{args.cores}x{args.ram // 1000}GB"
     term_cmd = f"xterm -T {title}"
+elif args.terminal == "kitty":
+    title = f"XLSF_KT_{args.cores}x{args.ram // 1000}GB"
+    term_cmd = f"kitty --title={title} --allow-remote-control"
 else:
     raise ValueError(f"Unsupported terminal: {args.terminal}")
 
