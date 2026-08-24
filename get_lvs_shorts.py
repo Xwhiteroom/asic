@@ -18,6 +18,7 @@ Multiple report files can be summarized together with -f/--file (repeatable).
 import argparse
 import csv
 import re
+import os
 import sys
 from collections import defaultdict
 from tabulate import tabulate
@@ -229,6 +230,7 @@ def main():
     args = ap.parse_args()
 
     paths = args.files if args.files else ([args.file] if args.file else [DEFAULT_FILE])
+    for p in paths:      print("**Report: " , os.path.abspath(p))
     max_level = min(args.max_level, 3)
 
     all_short_keys, layer_occurrences, shorts_without_layer, abbreviations = parse_files(paths)
