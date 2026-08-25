@@ -1,6 +1,5 @@
 # Copyright (c) 2026 Syed Shakir Iqbal (Xwhiteroom)
 # SPDX-License-Identifier: MIT
-# --- Build ASCII tree + collect level->object map (per node's subtree) ---
 #
 #---------------------------------------------------------------------------------------------
 proc ssi_audit_print_stage {red_blue comment} {
