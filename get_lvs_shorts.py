@@ -29,7 +29,6 @@ SHORTED_TEXT_COUNT_RE = re.compile(r'^\s*(\d+)\s+Shorted texts:')
 SHORTED_TEXT_RE = re.compile(r'^"([^"]+)"\s+at\s+\(([^,]+),\s*([^)]+)\)')
 DEFAULT_FILE = ("lvs.sum.shorts")
 
-
 def read_shorted_text_coords(it, lookahead=5):
     """Consume lines from `it` (positioned right after a SHORT header line) to
     pull the (x, y) coordinate of each shorted net's text label. Returns a
@@ -53,7 +52,6 @@ def read_shorted_text_coords(it, lookahead=5):
                     coords[name] = (float(x), float(y))
             return coords
     return coords
-
 
 def parse(path, file_tag):
     """Parse one lvs.sum.shorts file. file_tag namespaces SHORT numbers so multiple reports can be merged without number collisions."""
@@ -100,7 +98,6 @@ def parse(path, file_tag):
 
     return all_short_keys, layer_occurrences, shorts_without_layer, abbreviated_from
 
-
 def parse_files(paths):
     all_short_keys = set()
     layer_occurrences = []
@@ -116,7 +113,6 @@ def parse_files(paths):
             abbreviations.append((path, abbrev_from))
 
     return all_short_keys, layer_occurrences, shorts_without_layer, abbreviations
-
 
 def build_summary(all_short_keys, layer_occurrences, shorts_without_layer, abbreviations):
     # Level 0: by net-pair, with a per-layer breakdown
@@ -227,10 +223,8 @@ def build_summary(all_short_keys, layer_occurrences, shorts_without_layer, abbre
 
     return level0, level1, level2, level3, level4
 
-
 def fmt_coord(coord):
     return f"({coord[0]:.3f}, {coord[1]:.3f})" if coord else "-"
-
 
 def print_report(level0, level1, level2, level3, level4, tablefmt="github", max_level=0):
     if max_level >= 0:
@@ -291,7 +285,6 @@ def print_report(level0, level1, level2, level3, level4, tablefmt="github", max_
     ]
     print(tabulate(l4_rows, headers=["Net", "Shorts (as start or end)", "Coord", "Layers"], tablefmt=tablefmt))
 
-
 def write_level0_csv(level0, path):
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
@@ -302,7 +295,6 @@ def write_level0_csv(level0, path):
             ex, ey = row["end_coord"] or ("", "")
             w.writerow([row["pair"], row["total_count"], row["unique_count"], row["start"], sx, sy,
                         row["end"], ex, ey, row["layers_breakdown"]])
-
 
 def write_level1_csv(level1, path):
     with open(path, "w", newline="") as f:
@@ -315,7 +307,6 @@ def write_level1_csv(level1, path):
         for abbrev_path, abbrev_from in level1["abbreviations"]:
             w.writerow([f"abbreviated_report:{abbrev_path}", f"only 'BY LAYER' blocks past SHORT {abbrev_from - 1}"])
 
-
 def write_level2_csv(level2, path):
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
@@ -323,7 +314,6 @@ def write_level2_csv(level2, path):
         for row in level2:
             pairs_str = ", ".join(f"{a}-{b}" for a, b in row["net_pairs"])
             w.writerow([row["layer"], row["total_count"], row["unique_count"], pairs_str])
-
 
 def write_level3_csv(level3, path):
     with open(path, "w", newline="") as f:
@@ -335,7 +325,6 @@ def write_level3_csv(level3, path):
             ex, ey = row["end_coord"] or ("", "")
             w.writerow([row["layer"], row["start"], sx, sy, row["end"], ex, ey,
                         row["total_count"], row["unique_count"]])
-
 
 def write_level4_csv(level4, path):
     with open(path, "w", newline="") as f:
@@ -369,7 +358,8 @@ def main():
     args = ap.parse_args()
 
     paths = args.files if args.files else ([args.file] if args.file else [DEFAULT_FILE])
-    for p in paths:      print("REPORTS - " , os.path.abspath(p))
+    [print("# MISSING - ", os.path.abspath(p)) for p in paths if not os.path.exists(p)]; paths = [p for p in paths if os.path.exists(p)]
+    for p in paths:      print("# REPORTS - " , os.path.abspath(p))
     max_level = args.max_level
 
     all_short_keys, layer_occurrences, shorts_without_layer, abbreviations = parse_files(paths)
@@ -379,10 +369,9 @@ def main():
 
     if args.csv:
         out_paths = write_csvs(level0, level1, level2, level3, level4, args.csv)
-        print("\nWrote CSVs:")
+        print("\n# WROTE CSVs - ")
         for p in out_paths:
             print(f"  {p}")
-
 
 if __name__ == "__main__":
     sys.exit(main())
