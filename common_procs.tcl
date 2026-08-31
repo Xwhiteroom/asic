@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Syed Shakir Iqbal (Xwhiteroom)
 # SPDX-License-Identifier: MIT
 #
+##===================================================================
 ##  user_alias.tcl
 ##===================================================================
 ##------------------------------------------------------------------
@@ -25822,6 +25823,326 @@ proc xbbox {bbox_list} {
       puts "min_dist: $fmindist  (index $minidx, center $fmincenter)  <-- CLOSEST"
       return [list $bbox_result $count $centroid $maxdist $maxidx $mindist $minidx]
 }
+
+
+
+
+
+
+
+# Copyright (c) 2026 Syed Shakir Iqbal (Xwhiteroom)
+# SPDX-License-Identifier: MIT
+#
+# Compress a `report_buffer_trees` rpt: collapse repeated Load lines under
+# each Driver into one line per generalized name pattern (digit runs -> "*"),
+# annotated with a count and bbox/centroid/max-min-dist stats; Driver lines
+# get the same treatment pooled across all their direct loads. A driver's
+# own compressed Load lines are always grouped immediately after it, before
+# any child drivers -- regardless of how the raw report interleaved Loads
+# and nested Drivers under that parent. Everything outside the Driver tree
+# (headers, footers, blank lines) passes through unchanged, in its
+# original position.
+#
+# Usage:
+#
+#   source ssi_buffer_tree_compress.tcl
+#
+#   # file -> file (writes, returns the output path)
+#   ssi_compress_buffer_tree_rpt -file "/path/to/ck_jtag_map" \
+#                                -file "/path/to/ck_jtag_map_compressed"
+#
+#   # file -> var (returns the compressed text)
+#   set compressed [ssi_compress_buffer_tree_rpt -file "/path/to/ck_jtag_map" -var]
+#
+#   # var -> var (report text already in a Tcl var)
+#   set compressed [ssi_compress_buffer_tree_rpt -var $rpt_text -var]
+#
+#   # var -> file
+#   ssi_compress_buffer_tree_rpt -var $rpt_text -file "/tmp/out.rpt"
+#
+
+# --- Point-set stats: bbox, count, centroid, max/min dist + index ---
+proc ssi_point_stats {points} {
+    set minx {} ; set miny {} ; set maxx {} ; set maxy {}
+    set sumx 0.0 ; set sumy 0.0
+    set count 0
+    foreach p $points {
+        lassign $p x y
+        if {$minx eq "" || $x < $minx} { set minx $x }
+        if {$miny eq "" || $y < $miny} { set miny $y }
+        if {$maxx eq "" || $x > $maxx} { set maxx $x }
+        if {$maxy eq "" || $y > $maxy} { set maxy $y }
+        set sumx [expr {$sumx + $x}]
+        set sumy [expr {$sumy + $y}]
+        incr count
+    }
+    if {$count == 0} { return [list {} 0 {} {} {} {} {}] }
+    set cx [expr {$sumx / $count}]
+    set cy [expr {$sumy / $count}]
+
+    set maxdist {} ; set maxidx {}
+    set mindist {} ; set minidx {}
+    set idx 0
+    foreach p $points {
+        incr idx
+        lassign $p x y
+        set d [expr {sqrt(pow($x-$cx,2)+pow($y-$cy,2))}]
+        if {$maxdist eq "" || $d > $maxdist} { set maxdist $d ; set maxidx $idx }
+        if {$mindist eq "" || $d < $mindist} { set mindist $d ; set minidx $idx }
+    }
+
+    set bbox [list [list [format "%.3f" $minx] [format "%.3f" $miny]] \
+                   [list [format "%.3f" $maxx] [format "%.3f" $maxy]]]
+    set centroid [list [format "%.3f" $cx] [format "%.3f" $cy]]
+
+    return [list $bbox $count $centroid \
+                 [format "%.3f" $maxdist] $maxidx \
+                 [format "%.3f" $mindist] $minidx]
+}
+
+# --- Generalize a bus/instance name: digit runs -> "*" ---
+proc ssi_generalize_bus_name {name} {
+    return [regsub -all {\d+} $name {*}]
+}
+
+# --- Recursively emit one driver frame: its own compressed line, all its
+#     own compressed Load lines (grouped together), THEN its children
+#     (each rendered the same way). This is what keeps a driver's direct
+#     fanout reading as one block instead of being split around whichever
+#     child sub-branch happened to sit between two of its Loads in the
+#     raw report. Reads pass-1 accumulator arrays via upvar. ---
+proc ssi__render_frame {fid} {
+    upvar 1 outlines outlines
+    upvar 1 f_indent f_indent
+    upvar 1 f_level f_level
+    upvar 1 f_name f_name
+    upvar 1 f_annot f_annot
+    upvar 1 f_x f_x
+    upvar 1 f_y f_y
+    upvar 1 f_points f_points
+    upvar 1 f_pend_points f_pend_points
+    upvar 1 f_pend_order f_pend_order
+    upvar 1 f_children f_children
+
+    set indent $f_indent($fid)
+    set level  $f_level($fid)
+    set points {}
+    if {[info exists f_points($fid)]} { set points $f_points($fid) }
+
+    set stats ""
+    if {[llength $points] > 0} {
+        lassign [ssi_point_stats $points] bbox n centroid maxd maxi mind mini
+        set stats " bbox=$bbox centroid=$centroid"
+        append stats " max_dist=${maxd}(idx${maxi}) min_dist=${mind}(idx${mini})"
+    }
+    set annot_txt [expr {$f_annot($fid) ne "" ? " ($f_annot($fid))" : ""}]
+    set head [format "%05d" [llength $points]]
+    lappend outlines "${indent}Driver{$head} (level $level): $f_name($fid)$annot_txt \[$f_x($fid),$f_y($fid)\]$stats"
+
+    if {[info exists f_pend_order($fid)]} {
+        foreach pattern $f_pend_order($fid) {
+            set ppoints $f_pend_points($fid,$pattern)
+            lassign [ssi_point_stats $ppoints] bbox n centroid maxd maxi mind mini
+            set stats " bbox=$bbox centroid=$centroid"
+            append stats " max_dist=${maxd}(idx${maxi}) min_dist=${mind}(idx${mini})"
+            set head [format "%05d" [llength $ppoints]]
+            lappend outlines "${indent}    Load{$head} (level $level): $pattern $stats"
+        }
+    }
+
+    if {[info exists f_children($fid)]} {
+        foreach child $f_children($fid) { ssi__render_frame $child }
+    }
+}
+
+# --- Compress a report_buffer_trees rpt in two passes.
+#
+#     Pass 1 walks an ancestor STACK to accumulate correct per-driver
+#     stats AND parent/child structure. A Load's own "(level N)" equals
+#     its PARENT driver's level (siblings share a level number, it is NOT
+#     parent+1), so: a Load at level L pops any open frame DEEPER than L
+#     (its parent at exactly L stays open, still receiving more loads); a
+#     Driver at level L pops any open frame AT OR DEEPER than L (a prior
+#     sibling at the same level must close before this one opens). Getting
+#     this wrong misattributes a Load to the wrong driver whenever a
+#     driver's children include both a deep nested sub-branch AND a plain
+#     Load that appears textually after that sub-branch closes.
+#
+#     Pass 2 re-walks the SAME lines (deterministic, so it assigns the
+#     identical frame ids pass 1 did) purely for stack bookkeeping. The
+#     moment a fresh top-level root Driver is seen (stack was empty right
+#     before it), the ENTIRE subtree beneath it is rendered recursively
+#     in one shot from pass 1's data (see ssi__render_frame) -- grouping
+#     each driver's own loads right after it, before its children. Every
+#     other Driver/Load line during this pass is silently skipped (it's
+#     already covered by its root's recursive render); non-tree lines
+#     (headers, footers, blank lines) pass through only while the stack
+#     is empty, i.e. outside any tree.
+#
+#     in_mode/out_mode: -file or -var
+#       -file in_val   : in_val is a path, read from disk
+#       -var  in_val   : in_val is the report text itself
+#       -file out_val  : write the result to out_val (path), return out_val
+#       -var  (no arg) : return the result as a string
+# ---
+proc ssi_compress_buffer_tree_rpt {in_mode in_val out_mode {out_val ""}} {
+    set LOAD_RE {^(\s*)Load \(level (\d+)\): (\S+)(?:\s+\(([^()]*)\))?\s+\[([\-0-9.]+),\s*([\-0-9.]+)\]}
+    set DRIVER_RE {^(\s*)Driver \(level (\d+)\): (\S+)(?:\s+\(([^()]*)\))?\s+\[([\-0-9.]+),\s*([\-0-9.]+)\]}
+
+    switch -- $in_mode {
+        -file {
+            set fh [open $in_val r]
+            set content [read $fh]
+            close $fh
+        }
+        -var {
+            set content $in_val
+        }
+        default {
+            error "ssi_compress_buffer_tree_rpt: unknown input mode '$in_mode', expected -file or -var"
+        }
+    }
+    set lines [split [string trimright $content "\n"] "\n"]
+
+    # ---- Pass 1: accumulate per-frame stats + parent/child structure ----
+    set st_level {} ; set st_id {}
+    set next_id 0
+    array unset f_points
+    array unset f_pend_points
+    array unset f_pend_order
+    array unset f_indent
+    array unset f_level
+    array unset f_name
+    array unset f_annot
+    array unset f_x
+    array unset f_y
+    array unset f_children
+
+    foreach line $lines {
+        set is_load [regexp $LOAD_RE $line -> l_indent l_level l_name l_annot l_x l_y]
+        set is_driver 0
+        if {!$is_load} {
+            set is_driver [regexp $DRIVER_RE $line -> l_indent l_level l_name l_annot l_x l_y]
+        }
+
+        if {$is_load} {
+            while {[llength $st_level] > 0 && [lindex $st_level end] > $l_level} {
+                set st_level [lrange $st_level 0 end-1]
+                set st_id    [lrange $st_id 0 end-1]
+            }
+            set fid [lindex $st_id end]
+            set pattern [ssi_generalize_bus_name $l_name]
+            if {![info exists f_pend_order($fid)]} { set f_pend_order($fid) {} }
+            if {![info exists f_pend_points($fid,$pattern)]} {
+                set f_pend_points($fid,$pattern) {}
+                lappend f_pend_order($fid) $pattern
+            }
+            lappend f_pend_points($fid,$pattern) [list $l_x $l_y]
+            if {![info exists f_points($fid)]} { set f_points($fid) {} }
+            lappend f_points($fid) [list $l_x $l_y]
+            continue
+        }
+        if {$is_driver} {
+            while {[llength $st_level] > 0 && [lindex $st_level end] >= $l_level} {
+                set st_level [lrange $st_level 0 end-1]
+                set st_id    [lrange $st_id 0 end-1]
+            }
+            set fid $next_id
+            incr next_id
+            set parent [lindex $st_id end]
+            if {$parent ne ""} { lappend f_children($parent) $fid }
+            set f_indent($fid) $l_indent
+            set f_level($fid)  $l_level
+            set f_name($fid)   $l_name
+            set f_annot($fid)  $l_annot
+            set f_x($fid)      $l_x
+            set f_y($fid)      $l_y
+            lappend st_level $l_level
+            lappend st_id $fid
+            continue
+        }
+    }
+
+    # ---- Pass 2: stack bookkeeping only; render each root's entire
+    #      subtree recursively the moment it's encountered ----
+    set outlines {}
+    set st_level {} ; set st_id {}
+    set next_id 0
+
+    foreach line $lines {
+        set is_load [regexp $LOAD_RE $line -> l_indent l_level l_name l_annot l_x l_y]
+        set is_driver 0
+        if {!$is_load} {
+            set is_driver [regexp $DRIVER_RE $line -> l_indent l_level l_name l_annot l_x l_y]
+        }
+
+        if {$is_load} {
+            while {[llength $st_level] > 0 && [lindex $st_level end] > $l_level} {
+                set st_level [lrange $st_level 0 end-1]
+                set st_id    [lrange $st_id 0 end-1]
+            }
+            continue
+        }
+        if {$is_driver} {
+            while {[llength $st_level] > 0 && [lindex $st_level end] >= $l_level} {
+                set st_level [lrange $st_level 0 end-1]
+                set st_id    [lrange $st_id 0 end-1]
+            }
+            set now_empty [expr {[llength $st_level] == 0}]
+            set fid $next_id
+            incr next_id
+            lappend st_level $l_level
+            lappend st_id $fid
+            if {$now_empty} {
+                ssi__render_frame $fid
+            }
+            continue
+        }
+
+        if {[llength $st_level] == 0} {
+            lappend outlines $line
+        }
+    }
+
+    set result [join $outlines "\n"]
+
+    switch -- $out_mode {
+        -file {
+            set ofh [open $out_val w]
+            puts $ofh $result
+            close $ofh
+            return $out_val
+        }
+        -var { return $result }
+        default {
+            error "ssi_compress_buffer_tree_rpt: unknown output mode '$out_mode', expected -file or -var"
+        }
+    }
+}
+
+
+proc ssi_get_x_ports {} {
+        set all_seq             [get_cells -hier -filter "is_hierarchical==false && is_sequential==true"]
+        set all_seq_ck          [get_pins -of_object $all_seq -filter "is_clock_used_as_clock==true && direction==in"]
+        set all_seq_lck         [get_pins -of_object $all_seq -filter "lib_pin.is_clock_pin==true && direction==in"]
+        set all_seq_lrst        [get_pins -of_object $all_seq -filter "lib_pin.is_async_pin==true && direction==in"]
+        set reset_ports         [get_ports -quiet  [all_fanin -flat -startpoints_only -to $all_seq_lrst ]]
+        set clock_ports         [get_ports -quiet  [all_fanin -flat -startpoints_only -to $all_seq_lck]]
+        set clock_reset         [remove_from_collection -intersect $clock_ports $reset_ports]
+        set clock_ports         [remove_from_collection $clock_ports $clock_reset]
+        set reset_ports         [remove_from_collection $reset_ports $clock_reset]
+        return  [list $clock_ports $clock_reset $reset_ports ]
+}
+proc ssi_get_clock_ports {} {
+    return [lindex [ssi_get_x_ports] 0]    
+}
+proc ssi_get_clkrst_ports {} {
+    return [lindex [ssi_get_x_ports] 1]    
+}
+proc ssi_get_reset_ports {} {
+    return [lindex [ssi_get_x_ports] 2]    
+}
+
 
 
 ##------------------------------------------------------------------
