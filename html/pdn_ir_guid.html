@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PDN &amp; IR Drop Guide - PMIC to Junction</title>
+<style>
+:root, .viz-root {
+  color-scheme: light;
+  --surface-1:      #fcfcfb;
+  --surface-page:   #f9f9f7;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #898781;
+  --gridline:       #e1e0d9;
+  --baseline:       #c3c2b7;
+  --border:         rgba(11,11,11,0.10);
+  --ordinal-1: #b7d3f6; --ordinal-2: #9ec5f4; --ordinal-3: #86b6ef; --ordinal-4: #6da7ec;
+  --ordinal-5: #5598e7; --ordinal-6: #3987e5; --ordinal-7: #2a78d6; --ordinal-8: #1c5cab;
+  --div-blue: #2a78d6; --div-red: #e34948; --div-mid: #f0efec;
+  --status-warning: #fab219;
+  --status-warning-ink: #6b4a00;
+}
+:root[data-theme="dark"], :root[data-theme="dark"] .viz-root {
+  color-scheme: dark;
+  --surface-1:      #1a1a19;
+  --surface-page:   #0d0d0d;
+  --text-primary:   #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted:     #898781;
+  --gridline:       #2c2c2a;
+  --baseline:       #383835;
+  --border:         rgba(255,255,255,0.10);
+  --div-blue: #3987e5; --div-red: #e66767; --div-mid: #383835;
+  --status-warning-ink: #2b2200;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --surface-page:   #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --div-blue: #3987e5; --div-red: #e66767; --div-mid: #383835;
+    --status-warning-ink: #2b2200;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--surface-page);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+}
+body { padding: 24px; max-width: 1180px; margin: 0 auto; }
+
+header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 4px; }
+h1 { font-size: 20px; margin: 0 0 6px 0; }
+.subtitle { color: var(--text-secondary); max-width: 760px; line-height: 1.5; margin: 0; }
+.caveat { color: var(--text-muted); font-size: 12px; max-width: 760px; margin: 6px 0 0 0; }
+
+#themeToggle {
+  background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 12px; flex-shrink: 0;
+}
+
+/* filter row - one row, above everything it scopes */
+.filter-row {
+  display: flex; align-items: center; gap: 10px; margin: 18px 0 20px 0;
+  padding: 10px 12px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+}
+.filter-row label { color: var(--text-secondary); font-size: 12px; }
+.segmented { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.segmented button {
+  background: var(--surface-1); color: var(--text-secondary); border: none; border-right: 1px solid var(--border);
+  padding: 6px 12px; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.segmented button:last-child { border-right: none; }
+.segmented button[aria-pressed="true"] { background: var(--ordinal-7); color: #fff; }
+.filter-note { color: var(--text-muted); font-size: 12px; }
+
+section.card {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px; margin-bottom: 20px;
+}
+section.card h2 { font-size: 14px; margin: 0 0 4px 0; }
+section.card .card-sub { color: var(--text-secondary); font-size: 12px; margin: 0 0 14px 0; }
+
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 920px) { .charts-grid { grid-template-columns: 1fr; } }
+
+svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+.axis-label { fill: var(--text-muted); font-size: 10px; }
+.grid-line { stroke: var(--gridline); stroke-width: 1; }
+.baseline-line { stroke: var(--baseline); stroke-width: 1; }
+.value-label { fill: var(--text-primary); font-size: 11px; font-variant-numeric: tabular-nums; }
+.stage-label { fill: var(--text-secondary); font-size: 10.5px; }
+.band-label { fill: var(--text-secondary); font-size: 10.5px; }
+
+.bar-seg { cursor: pointer; }
+.bar-seg:hover, .band-seg:hover { filter: brightness(1.08); }
+.band-seg { cursor: pointer; }
+
+/* tooltip */
+#tooltip {
+  position: fixed; display: none; pointer-events: none; z-index: 50;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.18); max-width: 260px;
+}
+#tooltip .tt-title { color: var(--text-secondary); margin-bottom: 3px; }
+#tooltip .tt-value { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+#tooltip .tt-sub { color: var(--text-muted); margin-top: 3px; }
+
+/* table */
+table.pdn-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.pdn-table caption { text-align: left; color: var(--text-secondary); font-size: 12px; margin-bottom: 8px; }
+table.pdn-table th, table.pdn-table td {
+  padding: 8px 10px; border-bottom: 1px solid var(--gridline); text-align: left; vertical-align: top;
+}
+table.pdn-table thead th {
+  color: var(--text-secondary); font-weight: 600; cursor: pointer; user-select: none; white-space: nowrap;
+}
+table.pdn-table thead th:hover { color: var(--text-primary); }
+table.pdn-table thead th .sort-arrow { color: var(--text-muted); font-size: 10px; margin-left: 3px; }
+table.pdn-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.pdn-table tr.pkg-sensitive td:first-child { box-shadow: inset 3px 0 0 var(--ordinal-7); }
+table.pdn-table .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+table.pdn-table .pkg-note { color: var(--text-secondary); font-size: 11.5px; }
+
+/* callout */
+.callout {
+  display: flex; gap: 12px; padding: 14px 16px; border-radius: 8px;
+  background: color-mix(in srgb, var(--status-warning) 12%, var(--surface-1));
+  border: 1px solid color-mix(in srgb, var(--status-warning) 40%, var(--border));
+}
+.callout .icon {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--status-warning);
+  color: var(--status-warning-ink); display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+}
+.callout h3 { margin: 0 0 6px 0; font-size: 13.5px; }
+.callout ol { margin: 8px 0 0 18px; padding: 0; }
+.callout li { margin-bottom: 6px; line-height: 1.5; color: var(--text-secondary); font-size: 12.5px; }
+.callout p { margin: 0; line-height: 1.5; color: var(--text-secondary); font-size: 12.5px; }
+.callout .fine { color: var(--text-muted); font-size: 11px; margin-top: 8px; }
+
+footer { color: var(--text-muted); font-size: 11px; margin-top: 6px; line-height: 1.6; }
+</style>
+</head>
+<body class="viz-root" data-theme="light">
+
+<header>
+  <div>
+    <h1>PDN &amp; IR Drop: PMIC to Junction</h1>
+    <p class="subtitle">Step-by-step power delivery chain in a modern SoC package - nominal voltage,
+      per-stage drop budget, and the typical response frequency of each stage - plus where slow droop,
+      fast droop, virtual (on-die) droop, overshoot and undershoot each sit on the frequency spectrum.</p>
+    <p class="caveat">All voltages, %, and frequencies below are <strong>illustrative, order-of-magnitude
+      typical values</strong> for teaching the shape of the problem - not a spec. Real numbers vary by
+      node, package, workload, and each foundry/company's own signoff methodology.</p>
+  </div>
+  <button id="themeToggle" type="button">Dark mode</button>
+</header>
+
+<div class="filter-row">
+  <label>Package type</label>
+  <div class="segmented" id="pkgFilter">
+    <button data-pkg="bga" aria-pressed="true">Flip-chip BGA</button>
+    <button data-pkg="info" aria-pressed="false">InFO_PoP</button>
+    <button data-pkg="foplp" aria-pressed="false">FOPLP</button>
+  </div>
+  <span class="filter-note" id="pkgFilterNote"></span>
+</div>
+
+<section class="card">
+  <h2>Voltage waterfall - 1.30&nbsp;V source to junction</h2>
+  <p class="card-sub">Each step is the cumulative voltage after that stage's drop. Hover a step for the stage's own
+    contribution and typical response frequency. Color runs light&rarr;dark with distance from the source
+    (ordinal - position in the chain, not a separate identity).</p>
+  <div class="charts-grid">
+    <div>
+      <svg id="waterfallChart" width="100%" height="360" viewBox="0 0 560 360" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div>
+      <svg id="bandChart" width="100%" height="360" viewBox="0 0 560 360" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Stage-by-stage detail</h2>
+  <table class="pdn-table" id="pdnTable">
+    <caption>Click a column header to sort. Rows outlined in blue are most sensitive to package-type choice.</caption>
+    <thead>
+      <tr>
+        <th data-key="order">Stage <span class="sort-arrow"></span></th>
+        <th data-key="vAfter" class="num">Voltage after stage <span class="sort-arrow"></span></th>
+        <th data-key="dropPct" class="num">Drop budget <span class="sort-arrow"></span></th>
+        <th data-key="freqLabel">Typical response / frequency <span class="sort-arrow"></span></th>
+        <th data-key="note">Notes</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<section class="card">
+  <div class="callout">
+    <div class="icon">!</div>
+    <div>
+      <h3>Why is scan-shift IR margin typically kept around ~12%?</h3>
+      <p>Static IR signoff usually budgets a tighter margin (often ~5-8% of Vdd) for <em>functional</em>
+        max-frequency operation. Scan shift is commonly allowed a looser margin - ~10-15%, with ~12%
+        a frequently-cited representative figure - for a few reasons:</p>
+      <ol>
+        <li><strong>Near-worst-case simultaneous switching.</strong> During shift, most/all scan flops toggle
+          together on the same shift clock edge - activity approaching the theoretical maximum, far above
+          typical functional-mode activity factors. This is close to the highest instantaneous current the
+          chip will ever draw.</li>
+        <li><strong>But not the at-speed timing corner.</strong> Shift usually runs at a reduced clock
+          frequency and only needs correct capture/shift of flop data - it doesn't have to meet full-speed
+          launch/capture timing the way a functional path does, so there is more real slack to absorb a
+          deeper droop before it causes an actual failure.</li>
+        <li><strong>Cost-effective grid design.</strong> Forcing the tighter functional-mode margin onto shift
+          would over-design the power grid/decap purely to cover an artificial all-flops-toggle pattern that
+          only exists in shift - a looser, still-safe shift margin avoids that area/cost tax.</li>
+      </ol>
+      <p class="fine">The exact number (12%, 10%, 15%, ...) is an empirically-tuned, company/foundry-specific
+        signoff guideline, not a physical constant - always confirm the live value in your own methodology
+        doc before using it.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  PMIC = power management IC &middot; VR/VRM = voltage regulator (module) &middot; PG = on-die power grid &middot;
+  RDL = redistribution layer &middot; DVD = dynamic voltage drop &middot; FOPLP = fan-out panel-level package &middot;
+  InFO_PoP = integrated fan-out package-on-package.
+</footer>
+
+<div id="tooltip"></div>
+
+<script>
+(function () {
+"use strict";
+
+/* ============================================================================
+ * Data
+ * ==========================================================================*/
+var VDD_NOMINAL = 1.300;
+
+// Incremental drop budget (% of nominal Vdd) per stage, in chain order.
+var STAGES = [
+  { key: "pmic",    name: "PMIC / VR output (board)", short: "PMIC/VR", dropPct: 0.0,
+    freqLabel: "Control loop BW ~1 kHz–500 kHz (switching 300 kHz–2 MHz)",
+    note: "Regulated set point - the reference the rest of the chain measures against.",
+    pkgSensitive: false },
+  { key: "board",   name: "Board / PCB planes", short: "Board", dropPct: 0.4,
+    freqLabel: "Board resonance ~100 kHz–1 MHz (“slow / first droop” zone)",
+    note: "Bulk decoupling + board trace R/L.",
+    pkgSensitive: false },
+  { key: "package", name: "Package substrate/RDL planes + decap", short: "Package", dropPct: 1.0,
+    freqLabel: "Package resonance ~1–100 MHz (“fast / package droop” zone)",
+    note: { bga: "Multi-layer organic substrate, embedded planes - lower plane R/L, well-characterized ~10–30 MHz resonance.",
+            info: "RDL-based fan-out replaces substrate - shorter loop inductance helps HF droop, but RDL sheet R is higher than substrate copper.",
+            foplp: "Same RDL-based fan-out electrical profile as InFO_PoP; manufactured on panels instead of wafers for cost, not electricals." },
+    pkgSensitive: true },
+  { key: "bump",    name: "C4 bump / die attach", short: "Bump", dropPct: 0.3,
+    freqLabel: "Contributes to package-level resonance, ~10–200 MHz",
+    note: { bga: "Traditional C4 bump array, mature and low resistance per bump.",
+            info: "Finer bump pitch typical of fan-out dies; more bumps, each individually higher R but paralleled.",
+            foplp: "Similar fine-pitch bump profile to InFO_PoP." },
+    pkgSensitive: true },
+  { key: "rdl",     name: "RDL (redistribution layer)", short: "RDL", dropPct: 0.5,
+    freqLabel: "Mostly static (near-DC) contribution",
+    note: { bga: "Minimal/no RDL - substrate planes carry most of the routing instead.",
+            info: "RDL is the primary die-side power routing layer here - higher sheet resistance than substrate copper, so this row's static contribution is larger for fan-out packages.",
+            foplp: "Same RDL-dominant routing as InFO_PoP." },
+    pkgSensitive: true },
+  { key: "pg",      name: "On-die power grid (PG mesh)", short: "PG mesh", dropPct: 3.0,
+    freqLabel: "Dynamic component tracks clock/switching freq directly, ~100 MHz–5 GHz (“virtual / HF droop”)",
+    note: "Usually the single largest static-IR contributor - resistive mesh from top metal down to the standard-cell rail.",
+    pkgSensitive: false },
+  { key: "cell",    name: "Cell / macro local VDD pin", short: "Cell/Macro", dropPct: 0.8,
+    freqLabel: "Point of load - not an independent resonance",
+    note: "Local routing/via resistance from the grid tap to the actual cell or macro pin; this is what STA/IR-aware timing reads.",
+    pkgSensitive: false },
+  { key: "junction",name: "Junction (incl. typical dynamic voltage drop)", short: "Junction", dropPct: 3.0,
+    freqLabel: "Superposition of all bands above, peaking near clock frequency",
+    note: "Adds a typical functional-mode dynamic voltage drop (DVD) on top of the static chain - worst realistic voltage the transistor actually sees.",
+    pkgSensitive: false }
+];
+
+STAGES.forEach(function (s, i) { s.order = i; });
+var cum = 0;
+STAGES.forEach(function (s) {
+  cum += s.dropPct;
+  s.vAfter = VDD_NOMINAL * (1 - cum / 100);
+  s.cumDropPct = cum;
+});
+
+// Frequency bands: undershoot (droop, below baseline) vs overshoot (ring-back, above baseline)
+var BANDS = [
+  { name: "Slow droop (first droop)", fLo: 1e5, fHi: 2e6, under: [-12, -8], over: [3, 6],
+    note: "VRM control-loop + board/bulk decoupling response lag. Usually the deepest droop, even though it's the slowest." },
+  { name: "Fast droop (package)", fLo: 2e6, fHi: 1e8, under: [-7, -4], over: [2, 4],
+    note: "Package inductance + on-package decap resonance (“second droop”)." },
+  { name: "Virtual droop (on-die, HF)", fLo: 1e8, fHi: 3e9, under: [-6, -3], over: [1, 3],
+    note: "On-die grid + local decap response to di/dt at clock edges. Called “virtual” because EDA tools often estimate it via vectorless/timing-window analysis rather than a fully simulated transient." }
+];
+
+var PKG_LABELS = { bga: "Flip-chip BGA", info: "InFO_PoP", foplp: "FOPLP" };
+var PKG_FOOTNOTES = {
+  bga: "Traditional organic-substrate flip-chip: mature multi-plane substrate, lower package-level resistance/inductance, well-understood resonance.",
+  info: "TSMC InFO_PoP: RDL-based fan-out, shorter interconnect (helps HF droop), but RDL sheet resistance raises the static contribution of bump/RDL/package rows.",
+  foplp: "Fan-out panel-level package: same RDL-based electrical profile as InFO_PoP, built on rectangular panels instead of wafers for cost/throughput."
+};
+
+var currentPkg = "bga";
+
+/* ============================================================================
+ * Helpers
+ * ==========================================================================*/
+function $(id) { return document.getElementById(id); }
+function fmtV(v) { return v.toFixed(4) + " V"; }
+function noteFor(stage) {
+  if (typeof stage.note === "string") return stage.note;
+  return stage.note[currentPkg];
+}
+
+var tooltip = $("tooltip");
+function showTooltip(evt, titleText, valueText, subText) {
+  var titleEl = document.createElement("div"); titleEl.className = "tt-title"; titleEl.textContent = titleText;
+  var valueEl = document.createElement("div"); valueEl.className = "tt-value"; valueEl.textContent = valueText;
+  tooltip.innerHTML = "";
+  tooltip.appendChild(titleEl);
+  tooltip.appendChild(valueEl);
+  if (subText) {
+    var subEl = document.createElement("div"); subEl.className = "tt-sub"; subEl.textContent = subText;
+    tooltip.appendChild(subEl);
+  }
+  tooltip.style.display = "block";
+  moveTooltip(evt);
+}
+function moveTooltip(evt) {
+  var x = evt.clientX + 14, y = evt.clientY + 14;
+  var maxX = window.innerWidth - 280, maxY = window.innerHeight - 100;
+  tooltip.style.left = Math.min(x, maxX) + "px";
+  tooltip.style.top = Math.min(y, maxY) + "px";
+}
+function hideTooltip() { tooltip.style.display = "none"; }
+
+var SVG_NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs) {
+  var e = document.createElementNS(SVG_NS, tag);
+  for (var k in attrs) { e.setAttribute(k, attrs[k]); }
+  return e;
+}
+
+/* ============================================================================
+ * Chart A - voltage waterfall (ordinal ramp: position in the chain)
+ * ==========================================================================*/
+var ORDINAL = ["--ordinal-1","--ordinal-2","--ordinal-3","--ordinal-4","--ordinal-5","--ordinal-6","--ordinal-7","--ordinal-8"];
+function cssVar(name) { return getComputedStyle(document.body).getPropertyValue(name).trim(); }
+
+function renderWaterfall() {
+  var svg = $("waterfallChart");
+  svg.innerHTML = "";
+  var W = 560, H = 360;
+  var padL = 46, padR = 22, padT = 16, padB = 40;
+  var plotW = W - padL - padR, plotH = H - padT - padB;
+
+  var vMin = 1.10, vMax = 1.32;
+  function yOf(v) { return padT + (vMax - v) / (vMax - vMin) * plotH; }
+
+  // gridlines every 0.02V
+  for (var v = 1.10; v <= vMax + 1e-9; v += 0.02) {
+    var y = yOf(v);
+    svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: y, y2: y, class: "grid-line" }));
+    var lbl = el("text", { x: padL - 6, y: y + 3, class: "axis-label", "text-anchor": "end" });
+    lbl.textContent = v.toFixed(2);
+    svg.appendChild(lbl);
+  }
+
+  var n = STAGES.length;
+  var slot = plotW / n;
+  var barW = Math.min(30, slot * 0.55);
+  var prevV = VDD_NOMINAL;
+
+  STAGES.forEach(function (s, i) {
+    var cx = padL + slot * i + slot / 2;
+    var yTop = yOf(prevV);
+    var yBot = yOf(s.vAfter);
+    var top = Math.min(yTop, yBot), h = Math.max(Math.abs(yBot - yTop), 2);
+    var color = cssVar(ORDINAL[i]);
+
+    var rect = el("rect", {
+      x: cx - barW / 2, y: top, width: barW, height: h, rx: 3,
+      fill: color, class: "bar-seg" + (s.pkgSensitive ? " pkg-sensitive-mark" : "")
+    });
+    rect.addEventListener("pointermove", function (evt) {
+      showTooltip(evt, s.name, fmtV(s.vAfter),
+        "Drop this stage: " + s.dropPct.toFixed(1) + "%  ·  cumulative: " + s.cumDropPct.toFixed(1) + "%");
+    });
+    rect.addEventListener("pointerleave", hideTooltip);
+    svg.appendChild(rect);
+
+    // value label at the tip of the step
+    var lab = el("text", { x: cx, y: yBot - 5, class: "value-label", "text-anchor": "middle" });
+    lab.textContent = s.vAfter.toFixed(3);
+    if (yBot > yTop) { lab.setAttribute("y", yBot + 12); }
+    svg.appendChild(lab);
+
+    // stage label (short form, gently rotated, below axis - full name lives in tooltip/table)
+    var stageLab = el("text", {
+      x: cx, y: H - padB + 16, class: "stage-label", "text-anchor": "end",
+      transform: "rotate(-30 " + cx + " " + (H - padB + 16) + ")"
+    });
+    stageLab.textContent = s.short;
+    svg.appendChild(stageLab);
+
+    prevV = s.vAfter;
+  });
+
+  svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: padT, y2: padT, class: "baseline-line" }));
+}
+
+/* ============================================================================
+ * Chart B - droop/overshoot frequency bands (diverging: blue=undershoot, red=overshoot)
+ * ==========================================================================*/
+function renderBands() {
+  var svg = $("bandChart");
+  svg.innerHTML = "";
+  var W = 560, H = 360;
+  var padL = 46, padR = 14, padT = 16, padB = 54;
+  var plotW = W - padL - padR, plotH = H - padT - padB;
+
+  var fMin = 1e5, fMax = 4e9;
+  function xOf(f) { return padL + (Math.log10(f) - Math.log10(fMin)) / (Math.log10(fMax) - Math.log10(fMin)) * plotW; }
+
+  var decades = [1e5, 1e6, 1e7, 1e8, 1e9];
+  var decadeLabels = ["100kHz", "1MHz", "10MHz", "100MHz", "1GHz"];
+  decades.forEach(function (f, i) {
+    var x = xOf(f);
+    svg.appendChild(el("line", { x1: x, x2: x, y1: padT, y2: H - padB, class: "grid-line" }));
+    var lbl = el("text", { x: x, y: H - padB + 14, class: "axis-label", "text-anchor": "middle" });
+    lbl.textContent = decadeLabels[i];
+    svg.appendChild(lbl);
+  });
+
+  var vMinPct = -14, vMaxPct = 8;
+  function yOf(pct) { return padT + (vMaxPct - pct) / (vMaxPct - vMinPct) * plotH; }
+  var yZero = yOf(0);
+  svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: yZero, y2: yZero, class: "baseline-line" }));
+  var zeroLbl = el("text", { x: padL - 6, y: yZero + 3, class: "axis-label", "text-anchor": "end" });
+  zeroLbl.textContent = "Vnom";
+  svg.appendChild(zeroLbl);
+
+  var blue = cssVar("--div-blue"), red = cssVar("--div-red");
+  var rowH = plotH / BANDS.length;
+
+  BANDS.forEach(function (b, i) {
+    var x1 = xOf(b.fLo), x2 = xOf(b.fHi);
+    var barW = Math.max(x2 - x1, 6);
+
+    // undershoot (droop) - below baseline, blue
+    var yU1 = yOf(b.under[0]), yU2 = yOf(b.under[1]);
+    var underRect = el("rect", {
+      x: x1, y: Math.min(yU1, yZero), width: barW, height: Math.abs(yZero - yU1), rx: 3,
+      fill: blue, opacity: 0.85, class: "band-seg"
+    });
+    underRect.addEventListener("pointermove", function (evt) {
+      showTooltip(evt, b.name + " – undershoot / droop",
+        b.under[0] + "% to " + b.under[1] + "% of Vnom",
+        (b.fLo / 1e6).toFixed(2) + " MHz – " + (b.fHi / 1e6).toFixed(0) + " MHz");
+    });
+    underRect.addEventListener("pointerleave", hideTooltip);
+    svg.appendChild(underRect);
+
+    // overshoot - above baseline, red
+    var yO1 = yOf(b.over[1]);
+    var overRect = el("rect", {
+      x: x1, y: yO1, width: barW, height: Math.abs(yZero - yO1), rx: 3,
+      fill: red, opacity: 0.85, class: "band-seg"
+    });
+    overRect.addEventListener("pointermove", function (evt) {
+      showTooltip(evt, b.name + " – overshoot",
+        b.over[0] + "% to " + b.over[1] + "% of Vnom",
+        (b.fLo / 1e6).toFixed(2) + " MHz – " + (b.fHi / 1e6).toFixed(0) + " MHz");
+    });
+    overRect.addEventListener("pointerleave", hideTooltip);
+    svg.appendChild(overRect);
+
+    // band name label above the overshoot bar
+    var nameLbl = el("text", { x: (x1 + x2) / 2, y: yO1 - 6, class: "band-label", "text-anchor": "middle" });
+    nameLbl.textContent = b.name;
+    svg.appendChild(nameLbl);
+  });
+
+  // legend (2 series: undershoot / overshoot - always present per dataviz guidance)
+  var legendY = padT + 6;
+  [["Undershoot / droop", blue], ["Overshoot", red]].forEach(function (pair, i) {
+    var lx = W - padR - 150 + i * 0;
+    var ly = legendY + i * 16;
+    svg.appendChild(el("rect", { x: W - padR - 150, y: ly - 8, width: 10, height: 10, rx: 2, fill: pair[1] }));
+    var t = el("text", { x: W - padR - 134, y: ly + 1, class: "axis-label" });
+    t.textContent = pair[0];
+    svg.appendChild(t);
+  });
+}
+
+/* ============================================================================
+ * Table
+ * ==========================================================================*/
+var sortState = { key: "order", dir: 1 };
+
+function renderTable() {
+  var tbody = document.querySelector("#pdnTable tbody");
+  tbody.innerHTML = "";
+  var rows = STAGES.slice().sort(function (a, b) {
+    var ka = a[sortState.key], kb = b[sortState.key];
+    if (sortState.key === "note") { ka = noteFor(a); kb = noteFor(b); }
+    if (typeof ka === "number" && typeof kb === "number") { return (ka - kb) * sortState.dir; }
+    return String(ka).localeCompare(String(kb)) * sortState.dir;
+  });
+
+  rows.forEach(function (s) {
+    var tr = document.createElement("tr");
+    if (s.pkgSensitive) { tr.className = "pkg-sensitive"; }
+
+    var tdName = document.createElement("td");
+    var swatch = document.createElement("span");
+    swatch.className = "swatch";
+    swatch.style.background = cssVar(ORDINAL[s.order]);
+    tdName.appendChild(swatch);
+    tdName.appendChild(document.createTextNode(s.name));
+    tr.appendChild(tdName);
+
+    var tdV = document.createElement("td");
+    tdV.className = "num";
+    tdV.textContent = fmtV(s.vAfter);
+    tr.appendChild(tdV);
+
+    var tdDrop = document.createElement("td");
+    tdDrop.className = "num";
+    tdDrop.textContent = s.dropPct.toFixed(1) + "%  (cum. " + s.cumDropPct.toFixed(1) + "%)";
+    tr.appendChild(tdDrop);
+
+    var tdFreq = document.createElement("td");
+    tdFreq.textContent = s.freqLabel;
+    tr.appendChild(tdFreq);
+
+    var tdNote = document.createElement("td");
+    tdNote.className = "pkg-note";
+    tdNote.textContent = noteFor(s);
+    tr.appendChild(tdNote);
+
+    tbody.appendChild(tr);
+  });
+
+  document.querySelectorAll("#pdnTable thead th .sort-arrow").forEach(function (a) { a.textContent = ""; });
+  var activeTh = document.querySelector('#pdnTable thead th[data-key="' + sortState.key + '"] .sort-arrow');
+  if (activeTh) { activeTh.textContent = sortState.dir === 1 ? "▲" : "▼"; }
+}
+
+document.querySelectorAll("#pdnTable thead th").forEach(function (th) {
+  th.addEventListener("click", function () {
+    var key = th.dataset.key;
+    if (sortState.key === key) { sortState.dir *= -1; } else { sortState.key = key; sortState.dir = 1; }
+    renderTable();
+  });
+});
+
+/* ============================================================================
+ * Package filter
+ * ==========================================================================*/
+document.querySelectorAll("#pkgFilter button").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    document.querySelectorAll("#pkgFilter button").forEach(function (b) { b.setAttribute("aria-pressed", "false"); });
+    btn.setAttribute("aria-pressed", "true");
+    currentPkg = btn.dataset.pkg;
+    $("pkgFilterNote").textContent = PKG_FOOTNOTES[currentPkg];
+    renderTable();
+  });
+});
+$("pkgFilterNote").textContent = PKG_FOOTNOTES[currentPkg];
+
+/* ============================================================================
+ * Theme toggle
+ * ==========================================================================*/
+$("themeToggle").addEventListener("click", function () {
+  var cur = document.documentElement.getAttribute("data-theme") || "light";
+  var next = cur === "light" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", next);
+  document.body.setAttribute("data-theme", next);
+  $("themeToggle").textContent = next === "light" ? "Dark mode" : "Light mode";
+  renderWaterfall();
+  renderBands();
+  renderTable();
+});
+
+/* ============================================================================
+ * Init
+ * ==========================================================================*/
+document.addEventListener("pointermove", moveTooltip);
+renderWaterfall();
+renderBands();
+renderTable();
+})();
+</script>
+</body>
+</html>
