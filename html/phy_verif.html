@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DRC vs EDRC vs LVS vs ERC for digital designs</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2330; --mute:#5b6577; --line:#d5dae3;
+          --drc:#d9480f; --edrc:#9c36b5; --lvs:#1971c2; --erc:#2b8a3e; --bad:#e03131; --ok:#2f9e44; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:18px 28px 8px; }
+  h1 { margin:0 0 4px; font-size:22px; } .sub { color:var(--mute); font-size:13px; }
+  nav { display:flex; flex-wrap:wrap; gap:6px; padding:8px 28px; border-bottom:1px solid var(--line); background:#fff; position:sticky; top:0; z-index:5; }
+  nav button { border:1px solid var(--line); background:#fff; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:14px; color:var(--ink); }
+  nav button.active { color:#fff; border-color:transparent; }
+  nav button[data-tab=overview].active { background:#343a40; } nav button[data-tab=drc].active { background:var(--drc); }
+  nav button[data-tab=edrc].active { background:var(--edrc); } nav button[data-tab=lvs].active { background:var(--lvs); }
+  nav button[data-tab=erc].active { background:var(--erc); } nav button[data-tab=compare].active,
+  nav button[data-tab=project].active { background:#343a40; }
+  main { padding:18px 28px 40px; max-width:1180px; margin:0 auto; }
+  section { display:none; } section.active { display:block; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:16px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; } @media (max-width:900px){ .grid2{ grid-template-columns:1fr; } }
+  h2 { margin:0 0 8px; font-size:18px; } h3 { margin:14px 0 6px; font-size:15px; }
+  p, li { line-height:1.5; font-size:14px; } ul { margin:6px 0 6px 18px; padding:0; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:11px; color:#fff; font-size:12px; margin-right:4px; }
+  .p-drc{background:var(--drc)} .p-edrc{background:var(--edrc)} .p-lvs{background:var(--lvs)} .p-erc{background:var(--erc)}
+  .ctl { display:flex; align-items:center; gap:10px; margin:6px 0; font-size:13px; } .ctl label { min-width:170px; }
+  .ctl input[type=range] { flex:1; } .val { min-width:70px; text-align:right; font-variant-numeric:tabular-nums; }
+  .verdict { margin-top:8px; padding:8px 12px; border-radius:7px; font-size:14px; font-weight:600; }
+  .v-ok { background:#e6f6ea; color:#1b6b2c; } .v-bad { background:#fdeaea; color:#a51d1d; }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 10px; }
+  .btns button { border:1px solid var(--line); background:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px; }
+  .btns button.sel { background:var(--lvs); color:#fff; border-color:var(--lvs); }
+  table { border-collapse:collapse; width:100%; font-size:13px; } th, td { border:1px solid var(--line); padding:7px 9px; text-align:left; vertical-align:top; }
+  th { background:#eef1f6; cursor:pointer; } td.hl, th.hl { box-shadow:inset 0 0 0 2px currentColor; }
+  th.c-drc{color:var(--drc)} th.c-edrc{color:var(--edrc)} th.c-lvs{color:var(--lvs)} th.c-erc{color:var(--erc)}
+  svg { width:100%; height:auto; background:#fbfcfe; border:1px solid var(--line); border-radius:8px; }
+  .box { cursor:pointer; } .box:hover rect { stroke-width:3; }
+  .small { font-size:12px; color:var(--mute); } code { background:#eef1f6; padding:1px 5px; border-radius:4px; font-size:12.5px; }
+  .steps { counter-reset:s; list-style:none; margin:0; padding:0; } .steps li { counter-increment:s; background:#fff; border:1px solid var(--line); border-radius:8px; padding:10px 12px 10px 46px; margin-bottom:8px; position:relative; }
+  .steps li::before { content:counter(s); position:absolute; left:12px; top:10px; width:24px; height:24px; border-radius:50%; background:#343a40; color:#fff; text-align:center; line-height:24px; font-size:13px; }
+  select { padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:14px; }
+  .note { border-left:4px solid #f08c00; background:#fff8e6; padding:8px 12px; border-radius:4px; font-size:13px; margin:10px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>DRC &middot; EDRC &middot; LVS &middot; ERC &mdash; physical verification for digital designs</h1>
+  <div class="sub">Interactive notes. Click the tabs, drag the sliders, press the buttons. Self-contained: no network needed.</div>
+</header>
+<nav id="tabs">
+  <button data-tab="overview" class="active">Overview</button>
+  <button data-tab="drc">DRC</button>
+  <button data-tab="edrc">EDRC</button>
+  <button data-tab="lvs">LVS</button>
+  <button data-tab="erc">ERC</button>
+  <button data-tab="compare">Compare &amp; triage</button>
+  <button data-tab="project">Your run (run2_phyv)</button>
+</nav>
+<main>
+
+<!-- ===================================================== OVERVIEW -->
+<section id="overview" class="active">
+  <div class="card">
+    <h2>The big picture</h2>
+    <p>After place &amp; route a digital tile is streamed out as <b>layout geometry</b>. Four different checks look at it.
+       <span class="pill p-drc">DRC</span> and <span class="pill p-edrc">EDRC</span> only look at the <b>drawn shapes</b>.
+       <span class="pill p-lvs">LVS</span> and <span class="pill p-erc">ERC</span> first <b>extract a circuit</b> (devices and nets) from the shapes and then judge that circuit.
+       <i>Click a box to jump to that check.</i></p>
+    <svg viewBox="0 0 940 330" role="img" aria-label="verification flow">
+      <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5b6577"/></marker></defs>
+      <g font-size="13" fill="#1d2330">
+        <rect x="20" y="120" width="150" height="70" rx="8" fill="#fff" stroke="#5b6577"/><text x="95" y="150" text-anchor="middle">Layout</text><text x="95" y="168" text-anchor="middle" font-size="11" fill="#5b6577">OASIS/GDS (merged)</text>
+        <rect x="20" y="230" width="150" height="70" rx="8" fill="#fff" stroke="#5b6577"/><text x="95" y="260" text-anchor="middle">Netlist</text><text x="95" y="278" text-anchor="middle" font-size="11" fill="#5b6577">Verilog / spice (source)</text>
+        <rect x="20" y="20" width="150" height="70" rx="8" fill="#fff" stroke="#5b6577"/><text x="95" y="50" text-anchor="middle">Rule decks</text><text x="95" y="68" text-anchor="middle" font-size="11" fill="#5b6577">foundry + extra rules</text>
+        <g class="box" data-go="drc"><rect x="300" y="20" width="160" height="62" rx="8" fill="#fff4ec" stroke="#d9480f" stroke-width="2"/><text x="380" y="48" text-anchor="middle" font-weight="700" fill="#d9480f">DRC</text><text x="380" y="66" text-anchor="middle" font-size="11">shapes vs foundry rules</text></g>
+        <g class="box" data-go="edrc"><rect x="300" y="100" width="160" height="62" rx="8" fill="#f8efff" stroke="#9c36b5" stroke-width="2"/><text x="380" y="128" text-anchor="middle" font-weight="700" fill="#9c36b5">EDRC</text><text x="380" y="146" text-anchor="middle" font-size="11">shapes vs extra rule set</text></g>
+        <rect x="260" y="190" width="150" height="46" rx="8" fill="#eef1f6" stroke="#5b6577"/><text x="335" y="210" text-anchor="middle">Extraction</text><text x="335" y="226" text-anchor="middle" font-size="11" fill="#5b6577">devices + nets from shapes</text>
+        <g class="box" data-go="lvs"><rect x="470" y="190" width="170" height="62" rx="8" fill="#eaf3fd" stroke="#1971c2" stroke-width="2"/><text x="555" y="218" text-anchor="middle" font-weight="700" fill="#1971c2">LVS</text><text x="555" y="236" text-anchor="middle" font-size="11">extracted == source netlist?</text></g>
+        <g class="box" data-go="erc"><rect x="470" y="262" width="170" height="52" rx="8" fill="#ebf8ee" stroke="#2b8a3e" stroke-width="2"/><text x="555" y="286" text-anchor="middle" font-weight="700" fill="#2b8a3e">ERC</text><text x="555" y="302" text-anchor="middle" font-size="11">connectivity electrically sane?</text></g>
+        <rect x="730" y="110" width="190" height="110" rx="8" fill="#fff" stroke="#5b6577"/><text x="825" y="140" text-anchor="middle" font-weight="700">Reports</text>
+        <text x="825" y="162" text-anchor="middle" font-size="11" fill="#5b6577">drc.sum  /  lvs.sum</text><text x="825" y="180" text-anchor="middle" font-size="11" fill="#5b6577">erc.sum  /  markers (RVE)</text><text x="825" y="198" text-anchor="middle" font-size="11" fill="#5b6577">fix &#8594; re-run</text>
+      </g>
+      <g stroke="#5b6577" stroke-width="1.5" fill="none" marker-end="url(#arr)">
+        <path d="M170,60 L300,50"/><path d="M170,60 L300,125"/><path d="M95,120 L95,92" /><path d="M170,155 L300,70"/><path d="M170,155 L300,132"/>
+        <path d="M170,160 L260,205"/><path d="M170,262 L470,225"/><path d="M410,213 L470,215"/><path d="M410,222 L470,285"/>
+        <path d="M460,50 L730,130"/><path d="M460,130 L730,150"/><path d="M640,220 L730,175"/><path d="M640,285 L730,200"/>
+      </g>
+    </svg>
+    <div class="note">Rule of thumb: <b>DRC/EDRC = "can it be made?"</b> &nbsp; <b>LVS = "is it the circuit we designed?"</b> &nbsp; <b>ERC = "is the circuit electrically legal?"</b></div>
+  </div>
+  <div class="card">
+    <h2>Summary in one table</h2>
+    <table>
+      <tr><th></th><th class="c-drc">DRC</th><th class="c-edrc">EDRC</th><th class="c-lvs">LVS</th><th class="c-erc">ERC</th></tr>
+      <tr><td><b>Reads</b></td><td>drawn geometry</td><td>drawn geometry</td><td>extracted netlist vs source</td><td>extracted netlist (+ well/tap info)</td></tr>
+      <tr><td><b>Question</b></td><td>manufacturable?</td><td>meets the <i>extra</i> rules?</td><td>same circuit?</td><td>electrically legal?</td></tr>
+      <tr><td><b>Typical finding</b></td><td>spacing, width, enclosure, antenna</td><td>rule-specific refinements (<code>EDRC_*_SIGNOFF</code>)</td><td>short, open, missing device, name mismatch</td><td>floating well/net, missing tap/tie</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ===================================================== DRC -->
+<section id="drc">
+  <div class="grid2">
+    <div class="card">
+      <h2><span class="pill p-drc">DRC</span> Design Rule Check</h2>
+      <p>Checks the <b>drawn polygons</b> against the foundry's manufacturing rules, one layer or layer pair at a time:</p>
+      <ul>
+        <li><b>Width / spacing</b> &mdash; wires too thin or too close (the M17 spacing to the DFTIO macro was this kind)</li>
+        <li><b>Enclosure / overlap</b> &mdash; metal must surround a via by a minimum amount (via enclosure)</li>
+        <li><b>Area, density, end-of-line</b></li>
+        <li><b>Antenna (ANT)</b> &mdash; a long, floating metal run can charge up during manufacturing and hurt a transistor gate; fixed with diodes or layer hops</li>
+      </ul>
+      <p class="small">Fixes: reroute / widen / move a shape, change a via definition, add fill or diodes. Geometry only: DRC does not know what the wires <i>mean</i>.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Try it: spacing and width</h3>
+      <svg viewBox="0 0 460 230" id="drcsvg" role="img" aria-label="two wires with spacing"></svg>
+      <div class="ctl"><label for="sp">Drawn spacing (nm)</label><input id="sp" type="range" min="10" max="90" value="60"><span class="val" id="spv"></span></div>
+      <div class="ctl"><label for="mins">Rule: min spacing (nm)</label><input id="mins" type="range" min="20" max="70" value="40"><span class="val" id="minsv"></span></div>
+      <div class="ctl"><label for="wd">Drawn width (nm)</label><input id="wd" type="range" min="6" max="40" value="14"><span class="val" id="wdv"></span></div>
+      <div class="ctl"><label for="minw">Rule: min width (nm)</label><input id="minw" type="range" min="8" max="30" value="14"><span class="val" id="minwv"></span></div>
+      <div id="drcverdict" class="verdict"></div>
+      <p class="small">Numbers here are illustrative, not your technology's rules.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== EDRC -->
+<section id="edrc">
+  <div class="grid2">
+    <div class="card">
+      <h2><span class="pill p-edrc">EDRC</span> Extra / enhanced design rules</h2>
+      <p>A second geometry check, run <b>on top of the base DRC deck</b>, with additional rules. In your reports these show up as rule names like
+         <code>EDRC_31_M0_SIGNOFF</code>, <code>EDRC_22a_SIGNOFF</code> and <code>EDRC_33_M17_SIGNOFF</code>, in a separate <code>CbTileEDRC</code> report.</p>
+      <ul>
+        <li>Same kind of data as DRC: shapes on layers, no netlist.</li>
+        <li>A layout can be <b>DRC-clean and still have EDRC findings</b>.</li>
+        <li>Often these are layer-specific or recommended-style rules; some are waived or only matter at certain levels.</li>
+      </ul>
+      <div class="note">I am inferring the exact definition from the rule names and report layout. Confirm what <code>EDRC_*</code> means in your methodology (read the deck comments or ask the PD lead) before quoting it.</div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Try it: same layout, two rule sets</h3>
+      <svg viewBox="0 0 460 230" id="edrcsvg" role="img" aria-label="layout with base and extra rule markers"></svg>
+      <div class="ctl"><label><input type="checkbox" id="chkbase" checked> Base DRC deck</label>
+        <label><input type="checkbox" id="chkextra"> + Extra (EDRC) rules</label></div>
+      <div id="edrcverdict" class="verdict"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== LVS -->
+<section id="lvs">
+  <div class="grid2">
+    <div class="card">
+      <h2><span class="pill p-lvs">LVS</span> Layout vs Schematic</h2>
+      <p>Extracts a <b>netlist from the layout</b> and compares it to the <b>source netlist</b> (the design's Verilog/spice). They must be the same circuit: same devices, same connections.</p>
+      <ul>
+        <li><b>Short</b> &mdash; two nets are touching in layout but are separate in the source: the layout has <b>fewer</b> nets.</li>
+        <li><b>Open</b> &mdash; one net is broken into pieces: the layout has <b>more</b> nets.</li>
+        <li>Missing/extra devices, name or pin mismatches, power/ground connection errors.</li>
+      </ul>
+      <p class="small">Net counts are the quickest tell. In your <code>run17</code> the top level showed <b>layout 58480 vs source 58481</b> = one short; <code>run12</code> was 58477 vs 58477 = clean.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Try it: inject a fault</h3>
+      <div class="btns" id="lvsbtns">
+        <button data-s="clean" class="sel">Clean</button><button data-s="short">Inject a short</button><button data-s="open">Inject an open</button>
+      </div>
+      <svg viewBox="0 0 520 300" id="lvssvg" role="img" aria-label="schematic vs layout"></svg>
+      <div id="lvsverdict" class="verdict"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== ERC -->
+<section id="erc">
+  <div class="grid2">
+    <div class="card">
+      <h2><span class="pill p-erc">ERC</span> Electrical Rule Check</h2>
+      <p>Looks at the <b>extracted connectivity</b> and flags things that are legal geometry and may even match the netlist, but are <b>electrically unsound</b>:</p>
+      <ul>
+        <li><b>Floating wells / nets</b> &mdash; an N-well or P-well with no tap tied to a supply (in your <code>erc.sum</code>: <code>floating.nxwell_float</code>)</li>
+        <li><b>Missing taps/ties</b> &mdash; transistor bulk not connected to VDD/VSS</li>
+        <li>Unconnected inputs, supply shorts, wrong supply on a well</li>
+      </ul>
+      <p class="small">Fix: add the tap / tie cell, or connect the net. It runs from the same extraction as LVS, which is why <code>erc.sum</code> sits in the <code>CbTileLVS</code> folder.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Try it: well tap and input</h3>
+      <svg viewBox="0 0 460 250" id="ercsvg" role="img" aria-label="well with tap"></svg>
+      <div class="ctl"><label><input type="checkbox" id="chktap" checked> Well tap tied to VDD</label>
+        <label><input type="checkbox" id="chkin" checked> Gate input connected</label></div>
+      <div id="ercverdict" class="verdict"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== COMPARE -->
+<section id="compare">
+  <div class="card">
+    <h2>Compare &amp; triage</h2>
+    <p class="small">Click a column header to highlight that check.</p>
+    <table id="cmp">
+      <tr><th></th><th class="c-drc" data-col="1">DRC</th><th class="c-edrc" data-col="2">EDRC</th><th class="c-lvs" data-col="3">LVS</th><th class="c-erc" data-col="4">ERC</th></tr>
+      <tr><td><b>Input</b></td><td>layout shapes + foundry deck</td><td>layout shapes + extra deck</td><td>layout + source netlist</td><td>layout (extracted) + electrical rules</td></tr>
+      <tr><td><b>Knows about nets?</b></td><td>no</td><td>no</td><td>yes (the whole point)</td><td>yes</td></tr>
+      <tr><td><b>Finds</b></td><td>spacing, width, enclosure, density, antenna</td><td>rule-specific refinements</td><td>shorts, opens, device / name mismatch</td><td>floating wells/nets, missing taps</td></tr>
+      <tr><td><b>Typical fix</b></td><td>edit shapes, vias, fill, diodes</td><td>edit shapes or waive</td><td>fix routing / PG / netlist</td><td>add tap/tie, connect net</td></tr>
+      <tr><td><b>Count to read</b></td><td>Result Count (first number)</td><td>Result Count</td><td>net counts layout vs source</td><td>result count per ERC check</td></tr>
+      <tr><td><b>Report in your flow</b></td><td><code>CbTileDRC/drc.sum</code> (+ <code>CbTileANT</code>)</td><td><code>CbTileEDRC/drc.sum</code></td><td><code>CbTileLVS/lvs.sum</code></td><td><code>CbTileLVS/erc.sum</code></td></tr>
+    </table>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">"I see&hellip;" &rarr; which check?</h3>
+      <select id="symp">
+        <option value="">choose a symptom</option>
+        <option value="s1">Two nets are merged in the layout</option>
+        <option value="s2">One net is split / unconnected in the layout</option>
+        <option value="s3">Metal too close to other metal</option>
+        <option value="s4">Long floating wire, gate damage risk</option>
+        <option value="s5">N-well with no supply tie</option>
+        <option value="s6">DRC is clean but a SIGNOFF rule fires</option>
+        <option value="s7">Net count differs by one between layout and source</option>
+      </select>
+      <div id="sympans" class="verdict v-ok" style="display:none"></div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Suggested order</h3>
+      <ol class="steps">
+        <li><b>LVS first.</b> A short or open invalidates everything else, and an LVS-clean netlist is the baseline.</li>
+        <li><b>DRC next</b> &mdash; largest counts first, starting with your own cells and layers.</li>
+        <li><b>ERC</b> alongside LVS: it uses the same extraction.</li>
+        <li><b>EDRC last,</b> after base DRC is clean; many items are sign-off refinements, some waivable.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== PROJECT -->
+<section id="project">
+  <div class="card">
+    <h2>Your run: <code>c3x_lid_chnl_l_run2_phyv</code></h2>
+    <p>Counts I read from that run's reports (first number = <i>Result Count</i>). The bar length uses a square-root scale so small counts stay visible.</p>
+    <svg viewBox="0 0 700 190" id="barsvg" role="img" aria-label="violation counts per check"></svg>
+    <div class="note">The DRC bar is for <code>CbTileDRC</code>. In this run <b>459 of those 460 results are reported on macro/IP cells</b> (for example the bandgap and ESD/test-structure cells) and only 1 on the top cell <code>c3x_lid_chnl_l</code>, so check the cell and rule before assuming a result is yours. The XOR report is a different kind of check (compare against a reference layout) and is not on this chart.</div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">LVS history I saw</h3>
+      <table>
+        <tr><th>Run</th><th>Top-level nets: layout vs source</th><th>Verdict</th></tr>
+        <tr><td><code>run12</code> (ecoiter10)</td><td>58477 vs 58477</td><td style="color:var(--ok)"><b>clean</b></td></tr>
+        <tr><td><code>run17</code> (ecoiter14)</td><td>58480 vs 58481</td><td style="color:var(--bad)"><b>one short</b> (<code>CtCrossTriggerIn_signal[6]</code> with <code>ropt_net_39854</code>)</td></tr>
+      </table>
+      <p class="small">Layout has one net <i>fewer</i> than the source: two source nets merged in the layout = short.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Examples from this work</h3>
+      <ul>
+        <li><span class="pill p-drc">DRC</span> M17 spacing between the DFTIO macro and CHNL-L: three VDD stripes pulled back or extended</li>
+        <li><span class="pill p-drc">DRC</span> antenna on the Thermcode repeater inputs (<code>A.R.8.5.1</code> floating metal): diodes added</li>
+        <li><span class="pill p-erc">ERC</span> <code>floating.nxwell_float</code>: 3 results in <code>erc.sum</code></li>
+        <li><span class="pill p-lvs">LVS</span> the short above</li>
+        <li>Chip-level <code>ARL.*</code> rules (assembly layers): not active in the tile deck &mdash; they need <code>FULL_CHIP</code></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var NS = "http://www.w3.org/2000/svg";
+  function $(id) { return document.getElementById(id); }
+  function el(parent, name, attrs, text) {
+    var e = document.createElementNS(NS, name);
+    for (var k in attrs) { if (attrs.hasOwnProperty(k)) e.setAttribute(k, attrs[k]); }
+    if (text !== undefined) e.textContent = text;
+    parent.appendChild(e); return e;
+  }
+  function clear(svg) { while (svg.firstChild) svg.removeChild(svg.firstChild); }
+  function verdict(id, ok, text) { var v = $(id); v.className = "verdict " + (ok ? "v-ok" : "v-bad"); v.textContent = text; }
+
+  /* ---------- tabs ---------- */
+  function show(tab) {
+    var secs = document.getElementsByTagName("section");
+    for (var i = 0; i < secs.length; i++) secs[i].className = (secs[i].id === tab) ? "active" : "";
+    var bs = document.querySelectorAll("#tabs button");
+    for (var j = 0; j < bs.length; j++) bs[j].className = (bs[j].getAttribute("data-tab") === tab) ? "active" : "";
+    window.scrollTo(0, 0);
+  }
+  var tb = document.querySelectorAll("#tabs button");
+  for (var t = 0; t < tb.length; t++) tb[t].addEventListener("click", function () { show(this.getAttribute("data-tab")); });
+  var boxes = document.querySelectorAll(".box");
+  for (var b = 0; b < boxes.length; b++) boxes[b].addEventListener("click", function () { show(this.getAttribute("data-go")); });
+
+  /* ---------- DRC ---------- */
+  function drawDrc() {
+    var sp = +$("sp").value, mins = +$("mins").value, wd = +$("wd").value, minw = +$("minw").value;
+    $("spv").textContent = sp + " nm"; $("minsv").textContent = mins + " nm";
+    $("wdv").textContent = wd + " nm"; $("minwv").textContent = minw + " nm";
+    var svg = $("drcsvg"); clear(svg);
+    var S = 2.6;                           // px per nm
+    var w = wd * S, gap = sp * S, x0 = 70, y1 = 40, len = 330;
+    var badSp = sp < mins, badW = wd < minw;
+    el(svg, "rect", { x: x0, y: y1, width: len, height: w, fill: badW ? "#e03131" : "#4c6ef5" });
+    el(svg, "rect", { x: x0, y: y1 + w + gap, width: len, height: w, fill: badW ? "#e03131" : "#4c6ef5" });
+    el(svg, "text", { x: 14, y: y1 + w / 2 + 4, "font-size": 11, fill: "#5b6577" }, "M3");
+    el(svg, "text", { x: 14, y: y1 + w + gap + w / 2 + 4, "font-size": 11, fill: "#5b6577" }, "M3");
+    // spacing dimension
+    var xm = x0 + len + 22, ya = y1 + w, yb = y1 + w + gap;
+    el(svg, "line", { x1: xm, y1: ya, x2: xm, y2: yb, stroke: badSp ? "#e03131" : "#2f9e44", "stroke-width": 2 });
+    el(svg, "line", { x1: xm - 6, y1: ya, x2: xm + 6, y2: ya, stroke: badSp ? "#e03131" : "#2f9e44", "stroke-width": 2 });
+    el(svg, "line", { x1: xm - 6, y1: yb, x2: xm + 6, y2: yb, stroke: badSp ? "#e03131" : "#2f9e44", "stroke-width": 2 });
+    el(svg, "text", { x: xm + 10, y: (ya + yb) / 2 + 4, "font-size": 12, fill: badSp ? "#e03131" : "#2f9e44" }, "S=" + sp);
+    var xw = x0 + 40;
+    el(svg, "text", { x: xw, y: y1 - 8, "font-size": 12, fill: badW ? "#e03131" : "#2f9e44" }, "W=" + wd);
+    if (badSp) {
+      el(svg, "rect", { x: x0 + 90, y: ya - 2, width: 150, height: gap + 4, fill: "none", stroke: "#e03131", "stroke-width": 2, "stroke-dasharray": "5 3" });
+      el(svg, "text", { x: x0 + 100, y: yb + 22, "font-size": 12, fill: "#e03131", "font-weight": 700 }, "spacing violation (" + sp + " < " + mins + ")");
+    }
+    if (badW) el(svg, "text", { x: x0 + 100, y: 24, "font-size": 12, fill: "#e03131", "font-weight": 700 }, "width violation (" + wd + " < " + minw + ")");
+    var n = (badSp ? 1 : 0) + (badW ? 1 : 0);
+    verdict("drcverdict", n === 0, n === 0 ? "DRC clean: spacing and width meet the rules" : n + " DRC violation" + (n > 1 ? "s" : "") + ": " + (badSp ? "min-spacing " : "") + (badW ? "min-width" : ""));
+  }
+  ["sp", "mins", "wd", "minw"].forEach(function (id) { $(id).addEventListener("input", drawDrc); });
+
+  /* ---------- EDRC ---------- */
+  function drawEdrc() {
+    var base = $("chkbase").checked, extra = $("chkextra").checked;
+    var svg = $("edrcsvg"); clear(svg);
+    el(svg, "rect", { x: 40, y: 40, width: 300, height: 14, fill: "#4c6ef5" });
+    el(svg, "rect", { x: 40, y: 92, width: 300, height: 14, fill: "#4c6ef5" });
+    el(svg, "rect", { x: 360, y: 40, width: 14, height: 66, fill: "#4c6ef5" });
+    el(svg, "rect", { x: 110, y: 150, width: 18, height: 40, fill: "#e8590c" });   // single via-ish block
+    el(svg, "text", { x: 40, y: 30, "font-size": 11, fill: "#5b6577" }, "metal wires");
+    el(svg, "text", { x: 90, y: 208, "font-size": 11, fill: "#5b6577" }, "single-cut via");
+    var found = [];
+    if (base) { el(svg, "circle", { cx: 350, cy: 98, r: 15, fill: "none", stroke: "#d9480f", "stroke-width": 3 });
+      el(svg, "text", { x: 322, y: 130, "font-size": 11, fill: "#d9480f" }, "DRC: spacing"); found.push("1 base DRC (spacing)"); }
+    if (extra) { el(svg, "circle", { cx: 119, cy: 170, r: 24, fill: "none", stroke: "#9c36b5", "stroke-width": 3, "stroke-dasharray": "6 3" });
+      el(svg, "text", { x: 150, y: 172, "font-size": 11, fill: "#9c36b5" }, "EDRC: extra rule");
+      el(svg, "circle", { cx: 200, cy: 70, r: 14, fill: "none", stroke: "#9c36b5", "stroke-width": 3, "stroke-dasharray": "6 3" });
+      el(svg, "text", { x: 180, y: 28, "font-size": 11, fill: "#9c36b5" }, "EDRC: extra rule"); found.push("2 extra (EDRC)"); }
+    verdict("edrcverdict", found.length === 0, found.length === 0 ? "No rule set enabled: nothing reported" : "Reported: " + found.join(" + ") + (base && !extra ? "  (looks clean until the extra rules run)" : ""));
+  }
+  $("chkbase").addEventListener("change", drawEdrc); $("chkextra").addEventListener("change", drawEdrc);
+
+  /* ---------- LVS ---------- */
+  var lvsState = "clean";
+  function gate(svg, x, y, label) {
+    el(svg, "path", { d: "M" + x + "," + y + " l0,40 l36,-20 z", fill: "#fff", stroke: "#1d2330", "stroke-width": 1.6 });
+    el(svg, "circle", { cx: x + 40, cy: y + 20, r: 4, fill: "#fff", stroke: "#1d2330", "stroke-width": 1.6 });
+    el(svg, "text", { x: x + 6, y: y + 55, "font-size": 10, fill: "#5b6577" }, label);
+  }
+  function drawLvs() {
+    var svg = $("lvssvg"); clear(svg);
+    var bs = document.querySelectorAll("#lvsbtns button");
+    for (var i = 0; i < bs.length; i++) bs[i].className = bs[i].getAttribute("data-s") === lvsState ? "sel" : "";
+    // --- schematic (left)
+    el(svg, "rect", { x: 6, y: 6, width: 250, height: 288, rx: 8, fill: "#fff", stroke: "#d5dae3" });
+    el(svg, "text", { x: 16, y: 26, "font-size": 13, "font-weight": 700, fill: "#1971c2" }, "SOURCE (schematic / Verilog)");
+    gate(svg, 40, 70, "INV1"); gate(svg, 150, 70, "INV2");
+    el(svg, "line", { x1: 10, y1: 90, x2: 40, y2: 90, stroke: "#1d2330", "stroke-width": 2 });
+    el(svg, "line", { x1: 80, y1: 90, x2: 150, y2: 90, stroke: "#e8590c", "stroke-width": 3 });
+    el(svg, "line", { x1: 190, y1: 90, x2: 246, y2: 90, stroke: "#2b8a3e", "stroke-width": 3 });
+    el(svg, "text", { x: 14, y: 82, "font-size": 11 }, "A"); el(svg, "text", { x: 108, y: 82, "font-size": 11, fill: "#e8590c" }, "N1"); el(svg, "text", { x: 214, y: 82, "font-size": 11, fill: "#2b8a3e" }, "Z");
+    el(svg, "text", { x: 20, y: 200, "font-size": 12 }, "nets: A, N1, Z, VDD, VSS");
+    el(svg, "text", { x: 20, y: 222, "font-size": 20, "font-weight": 700, fill: "#1971c2" }, "5 nets");
+    // --- layout (right)
+    el(svg, "rect", { x: 264, y: 6, width: 250, height: 288, rx: 8, fill: "#fff", stroke: "#d5dae3" });
+    el(svg, "text", { x: 274, y: 26, "font-size": 13, "font-weight": 700, fill: "#1971c2" }, "LAYOUT (extracted)");
+    gate(svg, 298, 70, "INV1"); gate(svg, 408, 70, "INV2");
+    el(svg, "line", { x1: 268, y1: 90, x2: 298, y2: 90, stroke: "#1d2330", "stroke-width": 2 });
+    var nets = 5, note = "matches source", ok = true;
+    if (lvsState === "open") {
+      el(svg, "line", { x1: 338, y1: 90, x2: 360, y2: 90, stroke: "#e8590c", "stroke-width": 3 });
+      el(svg, "line", { x1: 384, y1: 90, x2: 408, y2: 90, stroke: "#c2255c", "stroke-width": 3 });
+      el(svg, "text", { x: 360, y: 110, "font-size": 14, fill: "#e03131", "font-weight": 700 }, "✕");
+      el(svg, "text", { x: 322, y: 82, "font-size": 11, fill: "#e8590c" }, "N1a"); el(svg, "text", { x: 384, y: 82, "font-size": 11, fill: "#c2255c" }, "N1b");
+      nets = 6; note = "N1 is split: OPEN"; ok = false;
+    } else {
+      el(svg, "line", { x1: 338, y1: 90, x2: 408, y2: 90, stroke: "#e8590c", "stroke-width": 3 });
+      el(svg, "text", { x: 366, y: 82, "font-size": 11, fill: "#e8590c" }, "N1");
+    }
+    el(svg, "line", { x1: 448, y1: 90, x2: 508, y2: 90, stroke: "#2b8a3e", "stroke-width": 3 });
+    el(svg, "text", { x: 476, y: 82, "font-size": 11, fill: "#2b8a3e" }, "Z");
+    if (lvsState === "short") {
+      el(svg, "path", { d: "M440,90 L440,150 L474,150 L474,90", fill: "none", stroke: "#e03131", "stroke-width": 3 });
+      el(svg, "text", { x: 400, y: 172, "font-size": 12, fill: "#e03131", "font-weight": 700 }, "metal bridge: N1 touches Z");
+      nets = 4; note = "N1 and Z merged: SHORT"; ok = false;
+    }
+    el(svg, "text", { x: 274, y: 200, "font-size": 12 }, lvsState === "open" ? "nets: A, N1a, N1b, Z, VDD, VSS" : lvsState === "short" ? "nets: A, N1+Z, VDD, VSS" : "nets: A, N1, Z, VDD, VSS");
+    el(svg, "text", { x: 274, y: 222, "font-size": 20, "font-weight": 700, fill: ok ? "#1971c2" : "#e03131" }, nets + " nets");
+    el(svg, "text", { x: 20, y: 262, "font-size": 12, fill: "#5b6577" }, "Same count and same connections = match");
+    verdict("lvsverdict", ok, "layout " + nets + " vs source 5: " + (ok ? "LVS clean (" + note + ")" : "LVS MISMATCH, " + note +
+      (nets < 5 ? " (layout has fewer nets than source)" : " (layout has more nets than source)")));
+  }
+  var lb = document.querySelectorAll("#lvsbtns button");
+  for (var q = 0; q < lb.length; q++) lb[q].addEventListener("click", function () { lvsState = this.getAttribute("data-s"); drawLvs(); });
+
+  /* ---------- ERC ---------- */
+  function drawErc() {
+    var tap = $("chktap").checked, gin = $("chkin").checked;
+    var svg = $("ercsvg"); clear(svg);
+    el(svg, "rect", { x: 20, y: 60, width: 260, height: 150, rx: 6, fill: tap ? "#e7f5ec" : "#fdeaea", stroke: tap ? "#2b8a3e" : "#e03131", "stroke-width": 2, "stroke-dasharray": tap ? "0" : "6 3" });
+    el(svg, "text", { x: 28, y: 78, "font-size": 12, fill: "#5b6577" }, "N-well");
+    el(svg, "rect", { x: 60, y: 110, width: 80, height: 44, fill: "#ffd8a8", stroke: "#e8590c" });
+    el(svg, "text", { x: 78, y: 137, "font-size": 12 }, "PMOS");
+    el(svg, "line", { x1: 0, y1: 20, x2: 460, y2: 20, stroke: "#c92a2a", "stroke-width": 3 });
+    el(svg, "text", { x: 400, y: 14, "font-size": 11, fill: "#c92a2a" }, "VDD rail");
+    el(svg, "line", { x1: 100, y1: 20, x2: 100, y2: 110, stroke: "#c92a2a", "stroke-width": 2 });    // source to VDD
+    if (tap) {
+      el(svg, "rect", { x: 200, y: 120, width: 40, height: 28, fill: "#b2f2bb", stroke: "#2b8a3e" });
+      el(svg, "text", { x: 205, y: 139, "font-size": 11 }, "TAP");
+      el(svg, "line", { x1: 220, y1: 20, x2: 220, y2: 120, stroke: "#c92a2a", "stroke-width": 2 });
+    } else {
+      el(svg, "text", { x: 190, y: 139, "font-size": 11, fill: "#e03131", "font-weight": 700 }, "(no tap)");
+    }
+    // gate input
+    el(svg, "line", { x1: 300, y1: 132, x2: 140, y2: 132, stroke: "#1d2330", "stroke-width": 1.5, "stroke-dasharray": gin ? "0" : "4 4" });
+    el(svg, "circle", { cx: 300, cy: 132, r: 5, fill: gin ? "#1d2330" : "#fff", stroke: gin ? "#1d2330" : "#e03131", "stroke-width": 2 });
+    el(svg, "text", { x: 312, y: 136, "font-size": 11, fill: gin ? "#1d2330" : "#e03131" }, gin ? "input from driver" : "input floating");
+    if (gin) el(svg, "line", { x1: 305, y1: 132, x2: 440, y2: 132, stroke: "#1d2330", "stroke-width": 1.5 });
+    var msgs = [];
+    if (!tap) msgs.push("floating N-well (floating.nxwell_float-style)");
+    if (!gin) msgs.push("unconnected / floating gate input");
+    verdict("ercverdict", msgs.length === 0, msgs.length === 0 ? "ERC clean: well tied to VDD, input driven" : "ERC: " + msgs.join(" + "));
+  }
+  $("chktap").addEventListener("change", drawErc); $("chkin").addEventListener("change", drawErc);
+
+  /* ---------- compare table ---------- */
+  var th = document.querySelectorAll("#cmp th[data-col]");
+  for (var h = 0; h < th.length; h++) th[h].addEventListener("click", function () {
+    var col = +this.getAttribute("data-col"), rows = $("cmp").rows, on = this.className.indexOf("hl") >= 0;
+    for (var r = 0; r < rows.length; r++) for (var c = 0; c < rows[r].cells.length; c++) rows[r].cells[c].className = rows[r].cells[c].className.replace(" hl", "");
+    if (!on) for (var r2 = 0; r2 < rows.length; r2++) rows[r2].cells[col].className += " hl";
+  });
+
+  /* ---------- symptom lookup ---------- */
+  var SYMP = {
+    s1: "LVS (short). Compare net counts: the layout has fewer nets than the source. Find the touching shapes, fix routing or PG, then re-run LVS.",
+    s2: "LVS (open). The layout has more nets than the source. Look for a missing via or a broken wire on that net.",
+    s3: "DRC (spacing). Reroute, move or trim the shape. A fix like pulling a stripe back is a DRC fix.",
+    s4: "DRC antenna (ANT). Add a diode on the net or hop to a higher layer. Floating metal with no diffusion is the cause.",
+    s5: "ERC (floating well). Add a well tap / tie cell tied to the right supply.",
+    s6: "EDRC. The extra rule set found something the base deck does not check. Read the rule text; fix or waive per methodology.",
+    s7: "LVS. A difference of exactly one net is usually a single short (layout one fewer) or a single open (layout one more)."
+  };
+  $("symp").addEventListener("change", function () {
+    var a = $("sympans"); if (!this.value) { a.style.display = "none"; return; }
+    a.style.display = "block"; a.textContent = SYMP[this.value];
+  });
+
+  /* ---------- project bar chart ---------- */
+  function drawBars() {
+    var svg = $("barsvg"); clear(svg);
+    var data = [["DRC (CbTileDRC)", 460, "#d9480f"], ["EDRC (CbTileEDRC)", 95, "#9c36b5"], ["ERC (erc.sum)", 3, "#2b8a3e"], ["Antenna (CbTileANT)", 0, "#868e96"]];
+    var x0 = 170, maxw = 470, top = Math.sqrt(460);
+    for (var i = 0; i < data.length; i++) {
+      var y = 14 + i * 42, wv = data[i][1] === 0 ? 3 : Math.max(6, Math.sqrt(data[i][1]) / top * maxw);
+      el(svg, "text", { x: 8, y: y + 20, "font-size": 13, fill: "#1d2330" }, data[i][0]);
+      el(svg, "rect", { x: x0, y: y, width: wv, height: 28, rx: 4, fill: data[i][2] });
+      el(svg, "text", { x: x0 + wv + 8, y: y + 20, "font-size": 13, "font-weight": 700, fill: "#1d2330" }, String(data[i][1]) + (data[i][1] === 0 ? "  (clean)" : ""));
+    }
+  }
+
+  drawDrc(); drawEdrc(); drawLvs(); drawErc(); drawBars();
+})();
+</script>
+</body>
+</html>
